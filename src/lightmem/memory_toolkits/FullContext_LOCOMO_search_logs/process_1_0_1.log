@@ -1,0 +1,4 @@
+✅ The dataset is loaded successfully.
+🔍 Searching memories for each trajectory...
+🔍 Searching memories:   0%|          | 0/1 [00:00<?, ?it/s]🔍 Searching memories: 100%|██████████| 1/1 [00:00<00:00, 68.52it/s]
+✅ Saved 199 results to FullContext_LOCOMO_40_0_1.json.

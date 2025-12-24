@@ -1,0 +1,15 @@
+{
+    "gpt-4o-mini": {
+        "average_input_tokens": 0.0,
+        "average_output_tokens": 0.0,
+        "average_time_per_call": 0.0,
+        "average_tokens_per_call": 0.0,
+        "histories": [],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_count": 0,
+        "total_time": 0.0,
+        "total_tokens": 0,
+        "window_size": 100000
+    }
+}

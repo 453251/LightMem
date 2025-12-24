@@ -1,0 +1,28 @@
+The dataset is loaded successfully 😄.
+LOCOMO Metadata
+───────────────
+  avg_message_per_session    : 21.625
+  avg_question_per_trajectory: 198.6
+  avg_session_per_trajectory : 27.2
+  codebase_url               : ''
+  name                       : 'LOCOMO'
+  paper                      : 'LOCOMO: Long Conversation Memory Benchmark'
+  question_type_stats        :
+          category_1: 282
+          category_2: 321
+          category_3: 96
+          category_4: 841
+          category_5: 446
+  size                       : 10
+  total_messages             : 5882
+  total_questions            : 1986
+  total_sessions             : 272
+
+There is a saved checkpoint for monitoring the token consumption of gpt-4o-mini. It will be loaded into `CostStateManager`.
+Cannot load native huggingface tokenizer for gpt-4, using tiktoken tokenizer instead.
+The LLM model 🤖 being used is gpt-4o-mini. It has been registered in `CostStateManager`.
+
+📉 Processing trajectories:   0%|          | 0/1 [00:00<?, ?it/s]📉 Processing trajectories: 100%|██████████| 1/1 [07:21<00:00, 441.98s/it]📉 Processing trajectories: 100%|██████████| 1/1 [07:21<00:00, 441.98s/it]
+The memory construction process is completed successfully 😀.
+For NaiveRAG, the average time per trajectory (1 in 1) is 246.92 seconds.
+For NaiveRAG, the average time per operation of adding new session is 13.00 seconds.

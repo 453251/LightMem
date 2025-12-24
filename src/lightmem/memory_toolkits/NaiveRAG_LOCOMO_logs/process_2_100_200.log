@@ -1,0 +1,10 @@
+usage: memory_construction.py [-h] --memory-type
+                              {A-MEM,LangMem,MemZero,FullContext,NaiveRAG}
+                              --dataset-type {LongMemEval} --dataset-path
+                              DATASET_PATH [--num-workers NUM_WORKERS]
+                              [--seed SEED] [--sample-size SAMPLE_SIZE]
+                              [--rerun] [--config-path CONFIG_PATH]
+                              [--token-cost-save-filename TOKEN_COST_SAVE_FILENAME]
+                              [--start-idx START_IDX] [--end-idx END_IDX]
+                              [--tokenizer-path TOKENIZER_PATH]
+memory_construction.py: error: argument --dataset-type: invalid choice: 'LOCOMO' (choose from 'LongMemEval')
