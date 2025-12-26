@@ -9,7 +9,7 @@ import openai
 
 import json
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from .base import (
     MemoryDataset,
