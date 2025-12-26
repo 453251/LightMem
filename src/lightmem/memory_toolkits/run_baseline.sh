@@ -28,6 +28,22 @@ base_urls=(
     "YOUR_BASE_URL_4"
     "YOUR_BASE_URL_5"
 )
+
+api_keys_for_image=api_keys=(
+    "sk-LU9oAwn6foP9YfDsFeC09dD8D6A24fFe8cC01aF6F301E954"
+    "YOUR_API_KEY_2"
+    "YOUR_API_KEY_3"
+    "YOUR_API_KEY_4"
+    "YOUR_API_KEY_5"
+)
+base_urls_for_image=base_urls=(
+    "https://api.gpts.vin/v1"
+    "YOUR_BASE_URL_2"
+    "YOUR_BASE_URL_3"
+    "YOUR_BASE_URL_4"
+    "YOUR_BASE_URL_5"
+)
+
 # ========================================================
 
 [ ! -d "$log_dir" ] && mkdir -p "$log_dir"
@@ -36,6 +52,8 @@ for ((i=0; i<${#ranges[@]}; i++)); do
     read start_idx end_idx <<< "${ranges[$i]}"
     export OPENAI_API_KEY="${api_keys[$i]}" 
     export OPENAI_API_BASE="${base_urls[$i]}"
+    export OPENAI_API_KEY_FOR_IMAGE="${api_keys_for_image[$i]}" 
+    export OPENAI_API_BASE_FOR_IMAGE="${base_urls_for_image[$i]}"
 
     log_file="${log_dir}/${pid_prefix}_$((i+1))_${start_idx}_${end_idx}.log"
     token_cost_file="${token_cost_prefix}_${memory_type,,}_$((i+1))_${start_idx}_${end_idx}"

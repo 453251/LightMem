@@ -1,4 +1,11 @@
 from __future__ import annotations
+import os
+
+import base64
+import requests
+from io import BytesIO
+from PIL import Image
+import openai
 
 import json
 from datetime import datetime
@@ -18,6 +25,91 @@ def _parse_session_datetime(dt_str: str) -> datetime:
     # Example: "1:56 pm on 8 May, 2023"
     return datetime.strptime(dt_str, "%I:%M %p on %d %B, %Y")
 
+def process_image_to_base64(img_url: str, target_size: tuple = (224, 224)) -> Optional[str]:
+    """
+    Download image from URL, resize, and convert to base64 encoding.
+
+    Args:
+        img_url: Image URL
+        target_size: Target image dimensions, defaults to (224, 224)
+
+    Returns:
+        Base64 encoded image string, or None if failed
+    """
+    try:
+        # 1. Download image from URL
+        response = requests.get(img_url, timeout=10)
+        response.raise_for_status()  # Check if request was successful
+
+        # 2. Open image using PIL
+        img = Image.open(BytesIO(response.content))
+
+        # 3. Resize image
+        img_resized = img.resize(target_size, Image.Resampling.LANCZOS)
+
+        # 4. Convert to RGB mode for consistency
+        if img_resized.mode != 'RGB':
+            img_resized = img_resized.convert('RGB')
+
+        # 5. Save to memory buffer and convert to base64
+        buffered = BytesIO()
+        img_resized.save(buffered, format="JPEG")
+        img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+        return img_base64
+
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to download image: {e}")
+        return None
+    except Exception as e:
+        print(f"Failed to process image: {e}")
+        return None
+
+
+def analyze_image_with_gpt4o(api_key: str, base_url:str, img_base64: str, prompt: str = "Describe this image") -> Optional[str]:
+    """
+    Analyze base64 encoded image using GPT-4o.
+
+    Args:
+        api_key: OpenAI API key
+        img_base64: Base64 encoded image
+        prompt: Analysis prompt
+
+    Returns:
+        GPT-4o response content, or None if failed
+    """
+    try:
+        # Initialize OpenAI client
+        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+
+        # Prepare message
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{img_base64}"
+                        }
+                    }
+                ]
+            }
+        ]
+
+        # Call GPT-4o API
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=300
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        print(f"Failed to call GPT-4o API: {e}")
+        return None
 
 class LOCOMO(MemoryDataset):
     """Dataset wrapper for LOCOMO-style long-term multi-session dialogs."""
@@ -34,6 +126,9 @@ class LOCOMO(MemoryDataset):
 
         trajectories: List[Trajectory] = []
         qa_lists: List[List[QuestionAnswerPair]] = []
+
+        # 简单的 URL -> caption 缓存，避免同一个图片多次请求 GPT-4o
+        image_caption_cache: Dict[str, str] = {}
 
         for sample_idx, sample in enumerate(data):
             conversation = sample.get("conversation", {})
@@ -74,8 +169,33 @@ class LOCOMO(MemoryDataset):
                 for msg in raw_msgs:
                     speaker = msg.get("speaker", "")
                     text = msg.get("text", "")
-                    if "blip_caption" in msg and msg["blip_caption"]:
-                        text = f"{text} (image description: {msg['blip_caption']})"
+
+                    # 使用 blip_caption 字段作为图片描述
+                    # if "blip_caption" in msg and msg["blip_caption"]:
+                    #     text = f"{text} (image description: {msg['blip_caption']})"
+
+                    # 使用 GPT-4o 分析图片并生成描述
+                    if "image_url" in msg and msg["image_url"]:
+                        img_url = msg["image_url"]
+                        if img_url in image_caption_cache:
+                            caption = image_caption_cache[img_url]
+                        else:
+                            img_base64 = process_image_to_base64(img_url)
+                            if img_base64:
+                                caption = analyze_image_with_gpt4o(
+                                    api_key=os.getenv("OPENAI_API_KEY_FOR_IMAGE", ""),
+                                    base_url=os.getenv("OPENAI_API_BASE_FOR_IMAGE", ""),
+                                    img_base64=img_base64,
+                                    prompt="Please describe the content of this image in detail."
+                                )
+                                if caption:
+                                    image_caption_cache[img_url] = caption
+                                else:
+                                    caption = "No description available."
+                            else:
+                                caption = "No description available."
+
+                        text = f"{text} (image description: {caption})"
 
                     # 简单规则：speaker_a 作为 "user"，speaker_b 作为 "assistant"
                     if speaker == speaker_a:
