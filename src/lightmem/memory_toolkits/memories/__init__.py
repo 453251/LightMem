@@ -33,7 +33,8 @@ CONFIG_MAPPING_NAMES = OrderedDict[str, str](
 DATASET_MAPPING_NAMES = OrderedDict[str, str](
     [
         ("LongMemEval", "LongMemEval"),
-        ("LOCOMO", "LOCOMO"),
+        ("LoCoMo", "LoCoMo"),
+        ("MobileBench", "MobileBench"),
     ]
 )
 
@@ -70,8 +71,10 @@ def type_to_module_name(key: str, mapping_type: str) -> str:
             match key:
                 case "LongMemEval":
                     return "datasets.longmemeval"
-                case "LOCOMO":
+                case "LoCoMo":
                     return "datasets.locomo"
+                case "MobileBench":
+                    return "datasets.mobilebench"
     # Default: convert key to module name
     return key.lower().replace("-", "_")
 

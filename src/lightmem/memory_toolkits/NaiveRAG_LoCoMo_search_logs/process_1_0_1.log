@@ -1,0 +1,5 @@
+✅ The dataset is loaded successfully.
+🔍 Searching memories for each trajectory...
+🔍 Searching memories:   0%|          | 0/1 [00:00<?, ?it/s]WARNING:memories.layers.naive_rag:[NaiveRAG] Failed to rebuild from config.json: Storage folder NaiveRAG/user_LoCoMo_locomo_0 is already accessed by another instance of Qdrant client. If you require concurrent access, use Qdrant server instead.
+🔍 Searching memories: 100%|██████████| 1/1 [00:26<00:00, 26.81s/it]🔍 Searching memories: 100%|██████████| 1/1 [00:26<00:00, 26.81s/it]
+✅ Saved 199 results to NaiveRAG_LoCoMo_40_0_1.json.

@@ -1,0 +1,14 @@
+{
+    "layer_type": "NaiveRAG",
+    "user_id": "user_MobileBench_mobilebench_0",
+    "save_dir": "NaiveRAG/user_MobileBench_mobilebench_0",
+    "retriever_name_or_path": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedding_model_dims": 384,
+    "use_gpu": "cuda",
+    "llm_backend": "openai",
+    "llm_model": "gpt-4o-mini",
+    "vector_store_provider": "qdrant",
+    "collection_name": "user_MobileBench_mobilebench_0",
+    "embedder_provider": "huggingface",
+    "qdrant_on_disk": true
+}

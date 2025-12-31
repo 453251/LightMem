@@ -19,6 +19,35 @@ from typing import (
 
 _LOCK = threading.Lock()
 
+from collections.abc import Mapping
+from types import MappingProxyType
+from pydantic import BaseModel
+
+def to_jsonable(obj):
+    """
+    把任意 Python 对象转成可以被 json.dump 接受的类型。
+    - 标量/None 原样返回
+    - list/tuple/set 递归处理
+    - dict / Mapping / mappingproxy 递归处理
+    - pydantic BaseModel：用 model_dump 再递归处理
+    - 其它复杂类型统一转成 str(obj)
+    """
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    
+    if isinstance(obj, BaseModel):
+        return to_jsonable(obj.model_dump())
+    
+    if isinstance(obj, (list, tuple, set)):
+        return [to_jsonable(i) for i in obj]
+    
+    if isinstance(obj, (dict, Mapping, MappingProxyType)):
+        return {str(k): to_jsonable(v) for k, v in obj.items()}
+    
+    # 剩下的统统转字符串，保证 json.dump 不再报错
+    return str(obj)
+
+
 def memory_search(
     layer_type: str,
     user_id: str,
@@ -201,7 +230,8 @@ if __name__ == "__main__":
 
     with open(output_path, 'w', encoding="utf-8") as f:
         json.dump(
-            retrievals, 
+            # retrievals, 
+            to_jsonable(retrievals),
             f, 
             ensure_ascii=False, 
             indent=4,

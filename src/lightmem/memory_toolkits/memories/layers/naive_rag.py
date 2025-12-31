@@ -11,6 +11,10 @@ from .base import BaseMemoryLayer
 
 from mem0.memory.main import Memory  # type: ignore
 
+from collections.abc import Mapping
+from types import MappingProxyType
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,12 +78,6 @@ class NaiveRAGConfig(BaseModel):
     qdrant_on_disk: bool = Field(
         default=True,
         description="Enable Qdrant persistent storage (on_disk).",
-    )
-
-    # ✅可选：add 阶段每写入 N 次就做一次快速自检（避免跑完才发现 0 points）
-    add_self_check_every: int = Field(
-        default=200,
-        description="Do a lightweight get_all check every N adds (0 disables).",
     )
 
     @model_validator(mode="after")
@@ -185,7 +183,6 @@ class NaiveRAGLayer(BaseMemoryLayer):
             "collection_name": self.config.collection_name,
             "embedder_provider": self.config.embedder_provider,
             "qdrant_on_disk": self.config.qdrant_on_disk,
-            "add_self_check_every": self.config.add_self_check_every,
         }
 
         with open(config_path, "w", encoding="utf-8") as f:
@@ -275,6 +272,29 @@ class NaiveRAGLayer(BaseMemoryLayer):
             return len(existing) > 0
         return False
 
+    def _to_jsonable(self, obj: Any) -> Any:
+        """
+        把任意 Python 对象转成可以被 json.dump 接受的类型。
+        - 标量/None 原样返回
+        - list/tuple/set 递归处理
+        - dict / Mapping / mappingproxy 递归处理
+        - 其它复杂类型统一转成 str(obj)
+        """
+        # 简单标量 / None：直接返回
+        if isinstance(obj, (str, int, float, bool)) or obj is None:
+            return obj
+
+        # list / tuple / set：递归
+        if isinstance(obj, (list, tuple, set)):
+            return [self._to_jsonable(i) for i in obj]
+
+        # dict / Mapping / mappingproxy：递归键值
+        if isinstance(obj, (dict, Mapping, MappingProxyType)):
+            return {str(k): self._to_jsonable(v) for k, v in obj.items()}
+
+        # 其它一律转字符串，保证 json.dump 不会再报错
+        return str(obj)
+
     # ==================== 写入 ====================
 
     def add_message(self, message: Dict[str, str], **kwargs) -> None:
@@ -303,16 +323,6 @@ class NaiveRAGLayer(BaseMemoryLayer):
             infer=False,
             metadata=metadata or None,
         )
-
-        # add 自检：每 N 条做一次轻量检查，早点发现 0 points
-        self._add_counter += 1
-        if self.config.add_self_check_every and self._add_counter % self.config.add_self_check_every == 0:
-            ok = self._has_any_memory(user_id=self.config.user_id)
-            if not ok:
-                logger.warning(
-                    f"[NaiveRAG] self-check failed after {self._add_counter} adds: "
-                    f"get_all still empty. save_dir={self.config.save_dir}, collection={self.config.collection_name}"
-                )
 
     def add_messages(self, messages: List[Dict[str, str]], **kwargs) -> None:
         for m in messages:
@@ -359,6 +369,65 @@ class NaiveRAGLayer(BaseMemoryLayer):
             outputs.append(out)
 
         return outputs
+
+    # # 修正版retrieve，确保 metadata 可 json.dump
+    # def retrieve(
+    #     self, query: str, k: int = 10, **kwargs
+    # ) -> List[Dict[str, Union[str, Dict[str, Any]]]]:
+    #     res = self.memory_layer.search(
+    #         query=query,
+    #         user_id=self.config.user_id,
+    #         limit=k,
+    #     )
+
+    #     if isinstance(res, dict):
+    #         results = res.get("results") or res.get("memories") or res.get("data") or []
+    #     elif isinstance(res, list):
+    #         results = res
+    #     else:
+    #         results = []
+
+    #     outputs: List[Dict[str, Union[str, Dict[str, Any]]]] = []
+    #     for item in results:
+    #         # ⚠️ 有些 mem0 结果可能不是 dict，这里先做一层防御
+    #         if not isinstance(item, dict):
+    #             try:
+    #                 # 有的 Pydantic / dataclass 支持 model_dump()/dict()
+    #                 if hasattr(item, "model_dump"):
+    #                     item = item.model_dump()
+    #                 elif hasattr(item, "dict"):
+    #                     item = item.dict()
+    #                 else:
+    #                     # 实在不行就转成 {"raw": str(item)}
+    #                     item = {"raw": str(item)}
+    #             except Exception:
+    #                 item = {"raw": str(item)}
+
+    #         content = item.get("memory", "")
+
+    #         raw_metadata = {kk: vv for kk, vv in item.items() if kk != "memory"}
+
+    #         # ✅ 关键：把 metadata 里所有值转成 json-safe 的
+    #         metadata = self._to_jsonable(raw_metadata)
+
+    #         out: Dict[str, Union[str, Dict[str, Any]]] = {
+    #             "content": content,
+    #             "metadata": metadata,
+    #         }
+
+    #         used_content = {
+    #             "memory": content,
+    #             "score": metadata.get("score"),
+    #             "created_at": metadata.get("created_at"),
+    #             "updated_at": metadata.get("updated_at"),
+    #         }
+    #         out["used_content"] = "\n".join(
+    #             f"{kk}: {vv}" for kk, vv in used_content.items() if vv is not None
+    #         )
+
+    #         outputs.append(out)
+
+    #     return outputs
 
     # ==================== 其它接口 ====================
 

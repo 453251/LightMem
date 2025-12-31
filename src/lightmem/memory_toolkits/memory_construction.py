@@ -8,6 +8,7 @@ import threading
 from importlib.util import find_spec
 from copy import deepcopy 
 import os
+from contextlib import nullcontext
 
 from token_monitor import (
     CostStateManager, 
@@ -33,7 +34,10 @@ from typing import (
     Optional, 
     Tuple, 
     List, 
+    Callable,
 )
+from memories.datasets.base import Trajectory, Message, QuestionAnswerPair, Session
+from importlib import import_module
 
 _LOCK = threading.Lock()
 
@@ -153,6 +157,9 @@ def memory_construction(
     trajectory: Trajectory, 
     config: Optional[Dict[str, Any]] = None, 
     rerun: bool = False,
+    message_preprocessor: Optional[
+        Callable[[Message | QuestionAnswerPair, Session], Dict[str, Any]]
+    ] = None,
 ) -> Dict[str, float]: 
     """Given a specific interaction trajectory, this function builds a memory."""
     config = config or {}
@@ -266,11 +273,9 @@ def memory_construction(
         patch_ctx = MonkeyPatcher(specs)
     elif layer_type == "FullContext":
         # No need to patch any method for FullContext layer. 
-        from contextlib import nullcontext
         patch_ctx = nullcontext()
     elif layer_type == "NaiveRAG":
         # No need to patch any method for NaiveRAG layer. 
-        from contextlib import nullcontext
         patch_ctx = nullcontext()
     else:
         raise ValueError(f"Unsupported memory type: {layer_type}.")
@@ -281,8 +286,11 @@ def memory_construction(
             # TODO: take the case that the message is a question-answe pair into the consideration 
             for message in session:
                 start_time = datetime.now() 
+                msg_dict = {"role": message.role, "content": message.content}
+                if message_preprocessor is not None:
+                    msg_dict = message_preprocessor(message, session)
                 layer.add_message(
-                    {"role": message.role, "content": message.content}, 
+                    msg_dict, 
                     timestamp=session.get_string_timestamp()
                 )
                 end_time = datetime.now() 
@@ -378,7 +386,40 @@ if __name__ == "__main__":
         default=None, 
         help="The path to the tokenizer (only for backbone model)."
     )
+    parser.add_argument(
+    "--message-preprocessor",
+    type=str,
+    default=None,
+    help=(
+        "Dotted path to a message preprocessor function, in the form "
+        "'some_module:some_function'. The function should accept "
+        "(message, session) and return a dict with at least 'role' "
+        "and 'content' keys."
+        )
+    )
+    parser.add_argument(
+    "--use-gpt4o-caption",
+    action="store_true",
+    default=False,
+    help=(
+        "If set, use GPT-4o to generate image captions in datasets that support it "
+        "(e.g., LoCoMo)."
+        )
+    )
     args = parser.parse_args()
+
+    message_preprocessor = None
+    if args.message_preprocessor is not None:
+        module_path, func_name = args.message_preprocessor.split(":", 1)
+        module = import_module(module_path)
+        message_preprocessor = getattr(module, func_name)
+    
+    # 控制是否用 GPT-4o caption：通过环境变量传给数据集读取代码
+    if args.use_gpt4o_caption:
+        os.environ["USE_GPT4O_CAPTION"] = "1"
+    else:
+        # 明确关掉（可选）
+        os.environ["USE_GPT4O_CAPTION"] = "0"
 
     # Prepare the dataset using lazy mapping
     ds_cls = DATASET_MAPPING[args.dataset_type]
@@ -470,7 +511,8 @@ if __name__ == "__main__":
                 user_id, 
                 trajectory, 
                 config=deepcopy(config), 
-                rerun=args.rerun 
+                rerun=args.rerun,
+                message_preprocessor=message_preprocessor,
             )
             futures.append(future)
         for future in tqdm(

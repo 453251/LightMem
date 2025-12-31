@@ -14,6 +14,36 @@ from typing import (
     Optional,
     Tuple,
 )
+from inference_utils.prompts import PROMPT_COLLECTIONS
+
+from collections.abc import Mapping
+from types import MappingProxyType
+from pydantic import BaseModel
+
+def to_jsonable(obj):
+    """
+    把任意 Python 对象转成可以被 json.dump 接受的类型。
+    - 标量/None 原样返回
+    - list/tuple/set 递归处理
+    - dict / Mapping / mappingproxy 递归处理
+    - pydantic BaseModel：用 model_dump 再递归处理
+    - 其它复杂类型统一转成 str(obj)
+    """
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    
+    if isinstance(obj, BaseModel):
+        return to_jsonable(obj.model_dump())
+    
+    if isinstance(obj, (list, tuple, set)):
+        return [to_jsonable(i) for i in obj]
+    
+    if isinstance(obj, (dict, Mapping, MappingProxyType)):
+        return {str(k): to_jsonable(v) for k, v in obj.items()}
+    
+    # 剩下的统统转字符串，保证 json.dump 不再报错
+    return str(obj)
+
 
 def _build_context_text(retrieved_memories: List[Dict[str, Any]]) -> str:
     contents = []
@@ -90,8 +120,15 @@ def evaluate_answers(
             prompt_name = "exact-match"
         elif "_abs" in qa_pair.metadata.get("id", ''):
             prompt_name = "longmemeval-abstention"
+        # else:
+        #     prompt_name = f"longmemeval-{qtype}"
         else:
-            prompt_name = f"longmemeval-{qtype}"
+            candidate = f"longmemeval-{qtype}"
+            if candidate in PROMPT_COLLECTIONS:
+                prompt_name = candidate
+            else:
+                # 降级成exact-match
+                prompt_name = "exact-match"
         prompt_name_per_index.append((prompt_name, qtype))
 
     judge_operator = LLMExactMatch(
@@ -252,7 +289,8 @@ if __name__ == "__main__":
         encoding="utf-8"
     ) as f:
         json.dump(
-            final_results, 
+            # final_results, 
+            to_jsonable(final_results),
             f, 
             ensure_ascii=False, 
             indent=4, 

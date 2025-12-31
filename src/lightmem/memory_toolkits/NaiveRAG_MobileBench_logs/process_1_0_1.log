@@ -1,0 +1,60 @@
+The dataset is loaded successfully 😄.
+MobileBench Metadata
+────────────────────
+  avg_message_per_session    : 7.516129032258065
+  avg_question_per_trajectory: 261.0
+  avg_session_per_trajectory : 31.0
+  name                       : 'MobileBench'
+  question_stats             :
+          difficulty   :
+                  easy  : 98
+                  hard  : 42
+                  medium: 121
+          num_hops     :
+                  1 : 110
+                  10: 3
+                  11: 4
+                  12: 1
+                  13: 1
+                  14: 1
+                  16: 1
+                  18: 1
+                  19: 1
+                  2 : 94
+                  22: 1
+                  3 : 25
+                  4 : 7
+                  5 : 1
+                  6 : 4
+                  7 : 1
+                  8 : 3
+                  9 : 2
+          question_form:
+                  multiple_choice: 1
+                  open_ended     : 232
+                  single_choice  : 28
+          question_type:
+                  adversarial                       : 4
+                  engineering-spec-interpretation   : 10
+                  habit-schedule-integration        : 21
+                  multi-hop                         : 40
+                  preference-constraint-tradeoff    : 26
+                  preference-inference              : 11
+                  preference-oriented generalization: 4
+                  query-focused summarization       : 35
+                  relationship-related              : 13
+                  single-hop                        : 85
+                  temporal-reasoning                : 12
+  size                       : 1
+  total_messages             : 233
+  total_questions            : 261
+  total_sessions             : 31
+
+There is a saved checkpoint for monitoring the token consumption of gpt-4o-mini. It will be loaded into `CostStateManager`.
+Cannot load native huggingface tokenizer for gpt-4, using tiktoken tokenizer instead.
+The LLM model 🤖 being used is gpt-4o-mini. It has been registered in `CostStateManager`.
+
+📉 Processing trajectories:   0%|          | 0/1 [00:00<?, ?it/s]📉 Processing trajectories: 100%|██████████| 1/1 [01:58<00:00, 118.35s/it]📉 Processing trajectories: 100%|██████████| 1/1 [01:58<00:00, 118.35s/it]
+The memory construction process is completed successfully 😀.
+For NaiveRAG, the average time per trajectory (1 in 1) is 43.18 seconds.
+For NaiveRAG, the average time per operation of adding new session is 1.39 seconds.

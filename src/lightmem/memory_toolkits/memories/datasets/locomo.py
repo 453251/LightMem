@@ -21,7 +21,7 @@ from .base import (
 
 
 def _parse_session_datetime(dt_str: str) -> datetime:
-    """Parse LOCOMO-style datetime string like '1:56 pm on 8 May, 2023'."""
+    """Parse LoCoMo-style datetime string like '1:56 pm on 8 May, 2023'."""
     # Example: "1:56 pm on 8 May, 2023"
     return datetime.strptime(dt_str, "%I:%M %p on %d %B, %Y")
 
@@ -111,16 +111,27 @@ def analyze_image_with_gpt4o(api_key: str, base_url:str, img_base64: str, prompt
         print(f"Failed to call GPT-4o API: {e}")
         return None
 
-class LOCOMO(MemoryDataset):
-    """Dataset wrapper for LOCOMO-style long-term multi-session dialogs."""
+# LoCoMo 中 QA category 数字 -> 语义化名称
+CATEGORY_ID_TO_TYPE: Dict[int, str] = {
+    1: "multi_hop",
+    2: "temporal",
+    3: "open_domain",
+    4: "single_hop",
+    5: "adversarial",
+}
+
+class LoCoMo(MemoryDataset):
+    """Dataset wrapper for LoCoMo-style long-term multi-session dialogs."""
 
     @classmethod
-    def read_raw_data(cls, path: str) -> LOCOMO:
+    def read_raw_data(cls, path: str) -> LoCoMo:
         """
         读取 locomo10.json 这类数据集，并构造
         - trajectories: List[Trajectory]
         - question_answer_pair_lists: List[List[QuestionAnswerPair]]
         """
+        use_gpt4o_caption = os.getenv("USE_GPT4O_CAPTION", "0") == "1"
+
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
@@ -170,47 +181,95 @@ class LOCOMO(MemoryDataset):
                     speaker = msg.get("speaker", "")
                     text = msg.get("text", "")
 
-                    # 使用 blip_caption 字段作为图片描述
-                    # if "blip_caption" in msg and msg["blip_caption"]:
-                    #     text = f"{text} (image description: {msg['blip_caption']})"
+                    # 构造 metadata。注意：
+                    # - name: 真实说话人名字
+                    # - speaker_tag: "speaker_a" / "speaker_b"
+                    # - img_url / blip_caption / image_query
+                    msg_metadata: Dict[str, Any] = {
+                        "name": speaker,
+                    }
+                    
+                    if speaker == speaker_a:
+                        msg_metadata["speaker_tag"] = "speaker_a"
+                    elif speaker == speaker_b:
+                        msg_metadata["speaker_tag"] = "speaker_b"
+                    else:
+                        msg_metadata["speaker_tag"] = "unknown"
+                    
+                    if "dia_id" in msg and msg["dia_id"]:
+                        msg_metadata["dia_id"] = msg["dia_id"]
+                    
+                    img_url = msg.get("img_url")
+                    if img_url:
+                        msg_metadata["img_url"] = img_url
 
-                    # 使用 GPT-4o 分析图片并生成描述
-                    if "image_url" in msg and msg["image_url"]:
-                        img_url = msg["image_url"]
-                        if img_url in image_caption_cache:
-                            caption = image_caption_cache[img_url]
-                        else:
-                            img_base64 = process_image_to_base64(img_url)
-                            if img_base64:
-                                caption = analyze_image_with_gpt4o(
-                                    api_key=os.getenv("OPENAI_API_KEY_FOR_IMAGE", ""),
-                                    base_url=os.getenv("OPENAI_API_BASE_FOR_IMAGE", ""),
-                                    img_base64=img_base64,
-                                    prompt="Please describe the content of this image in detail."
-                                )
-                                if caption:
-                                    image_caption_cache[img_url] = caption
+                        blip_caption = msg.get("blip_caption")
+                        if blip_caption:
+                            msg_metadata["blip_caption"] = blip_caption
+                        
+                        if "query" in msg and msg["query"]:
+                            msg_metadata["image_query"] = msg["query"]
+
+                        # 如果需要，使用 GPT-4o 分析图片并生成描述
+                        if use_gpt4o_caption:
+                            caption: Optional[str] = None
+                            if img_url in image_caption_cache:
+                                caption = image_caption_cache[img_url]
+                            else:
+                                img_base64 = process_image_to_base64(img_url)
+                                if img_base64:
+                                    caption = analyze_image_with_gpt4o(
+                                        api_key=os.getenv("OPENAI_API_KEY_FOR_IMAGE", ""),
+                                        base_url=os.getenv("OPENAI_API_BASE_FOR_IMAGE", ""),
+                                        img_base64=img_base64,
+                                        prompt="Please describe the content of this image in detail."
+                                    )
+                                    if caption:
+                                        image_caption_cache[img_url] = caption
+                                    else:
+                                        caption = "No description available."
                                 else:
                                     caption = "No description available."
-                            else:
-                                caption = "No description available."
+                            
+                            if caption and caption != "No description available.":
+                                msg_metadata["gpt4o_image_caption"] = caption
 
-                        text = f"{text} (image description: {caption})"
+                    # # 使用 blip_caption 字段作为图片描述
+                    # # if "blip_caption" in msg and msg["blip_caption"]:
+                    # #     text = f"{text} (image description: {msg['blip_caption']})"
 
-                    # 简单规则：speaker_a 作为 "user"，speaker_b 作为 "assistant"
-                    if speaker == speaker_a:
-                        role = "user"
-                    elif speaker == speaker_b:
-                        role = "assistant"
-                    else:
-                        # 不认识的说话人，兜底成 "user"
-                        role = "user"
+                    # # 使用 GPT-4o 分析图片并生成描述
+                    # if "img_url" in msg and msg["img_url"]:
+                    #     img_url = msg["img_url"]
+                    #     if img_url in image_caption_cache:
+                    #         caption = image_caption_cache[img_url]
+                    #     else:
+                    #         img_base64 = process_image_to_base64(img_url)
+                    #         if img_base64:
+                    #             caption = analyze_image_with_gpt4o(
+                    #                 api_key=os.getenv("OPENAI_API_KEY_FOR_IMAGE", ""),
+                    #                 base_url=os.getenv("OPENAI_API_BASE_FOR_IMAGE", ""),
+                    #                 img_base64=img_base64,
+                    #                 prompt="Please describe the content of this image in detail."
+                    #             )
+                    #             if caption:
+                    #                 image_caption_cache[img_url] = caption
+                    #             else:
+                    #                 caption = "No description available."
+                    #         else:
+                    #             caption = "No description available."
+
+                    #     text = f"{text} (image description: {caption})"
+
+                    # role 统一为 "user"，speaker 信息放 metadata["name"] 中
+                    role = "user"
 
                     messages.append(
                         Message(
                             role=role,
                             content=text,
                             timestamp=session_dt,
+                            metadata=msg_metadata,
                         )
                     )
 
@@ -236,7 +295,7 @@ class LOCOMO(MemoryDataset):
             trajectories.append(trajectory)
 
             # ===== 构造 question_answer_pair 列表 =====
-            # 对 LOCOMO 来说，问题可以认为是在对完整对话之后提问，
+            # 对 LoCoMo 来说，问题可以认为是在对完整对话之后提问，
             # 因此时间戳就统一放在最后一个 session 的时间上。
             if sessions:
                 question_ts = sessions[-1].timestamp
@@ -261,11 +320,13 @@ class LOCOMO(MemoryDataset):
                     answer_list = tuple()
 
                 category = qa.get("category")
+                category_type = CATEGORY_ID_TO_TYPE.get(category, "unknown")
                 metadata: Dict[str, Any] = {
                     "id": f"locomo_q_{sample_idx}_{q_idx}",
                     # 和 LongMemEval 一样，给一个 question_type 方便做统计
-                    "question_type": f"category_{category}",
-                    "category": category,
+                    "question_type": category_type,
+                    "category": category_type,
+                    "category_id": category,
                     "evidence": qa.get("evidence", []),
                 }
                 if "adversarial_answer" in qa:
@@ -291,10 +352,12 @@ class LOCOMO(MemoryDataset):
     def _generate_metadata(self) -> Dict[str, Any]:
         """生成数据集的一些统计信息，风格仿照 LongMemEval。"""
         dataset_metadata: Dict[str, Any] = {
-            "name": "LOCOMO",
+            "name": "LoCoMo",
             # 这里的 paper / codebase_url 你可以换成真实信息
-            "paper": "LOCOMO: Long Conversation Memory Benchmark",
-            "codebase_url": "",
+            "paper": "Evaluating Very Long-Term Conversational Memory of LLM Agents",
+            "paper_url": "https://arxiv.org/abs/2402.17753",
+            "codebase_url": "https://github.com/snap-research/LoCoMo",
+            "homepage": "https://snap-research.github.io/locomo/",
             "total_sessions": 0,
             "total_messages": 0,
             "total_questions": 0,
