@@ -88,6 +88,7 @@ def memory_search(
                             }
                         ],
                         "qa_pair": qa_pair,
+                        "user_id": user_id,
                     }
                     for qa_pair in questions 
                 ]
@@ -101,6 +102,7 @@ def memory_search(
         retrieval_result = {
             "retrieved_memories": retrieved_memories,
             "qa_pair": qa_pair,
+            "user_id": user_id, 
         }
         retrievals.append(retrieval_result)
     
