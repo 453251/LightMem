@@ -175,7 +175,6 @@ def run_error_attribution_for_user(
                             "additionalProperties": False
                         }
                     },
-                    "strict": True,
                 },
             )
             
@@ -233,7 +232,6 @@ def run_error_attribution_for_user(
                         "additionalProperties": False
                     }
                 },
-                "strict": True,
             },
         )
         
