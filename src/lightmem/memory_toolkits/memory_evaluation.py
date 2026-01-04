@@ -279,6 +279,7 @@ if __name__ == "__main__":
                 "judge_response": judge_dict["judge_response"],
                 "is_correct": judge_dict["is_correct"],
                 "retrieved_memories": item["retrieved_memories"],
+                "user_id": item["user_id"],
             }
         )
 
