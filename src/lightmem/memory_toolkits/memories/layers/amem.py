@@ -150,7 +150,8 @@ class AMEMLayer(BaseMemoryLayer):
         timestamp = kwargs["timestamp"]
         
         # See https://github.com/WujiangXu/A-mem/blob/main/test_advanced.py#L296 
-        text = f"Speaker {message['role']} says: {message['content']}"
+        name = message.get("name", message["role"]) 
+        text = f"Speaker {message['role']} (name: {name}) says: {message['content']}"
         self.memory_layer.add_note(text, time=timestamp)
 
     def add_messages(self, messages: List[Dict[str, str]], **kwargs) -> None:
