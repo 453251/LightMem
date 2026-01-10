@@ -32,7 +32,7 @@ class MobileBench(MemoryDataset):
 
                 formatted_messages = []
                 for message in messages:
-                    message_timestamp = datetime.strptime(message["timestamp"], '%Y-%m-%d %H:%M:%S')
+                    message_timestamp = datetime.fromisoformat(message["timestamp"])
                     formatted_messages.append(
                         Message(
                             role=message["role"],

@@ -22,6 +22,7 @@ _LOCK = threading.Lock()
 from collections.abc import Mapping
 from types import MappingProxyType
 from pydantic import BaseModel
+import sys
 
 def to_jsonable(obj):
     """
@@ -58,8 +59,9 @@ def memory_search(
 ) -> List[Dict[str, Any]]:
     """Search memories for a given user based on questions."""
     config = config or {}
+    llm_model = config["llm_model"]
     config["user_id"] = user_id
-    config["save_dir"] = f"{layer_type}/{user_id}"
+    config["save_dir"] = f"{layer_type}_{llm_model}/{user_id}"
     
     # Load memory layer configuration and class using lazy mapping
     config_cls = CONFIG_MAPPING[layer_type]
@@ -88,25 +90,61 @@ def memory_search(
                             }
                         ],
                         "qa_pair": qa_pair,
-                        "user_id": user_id,
                     }
                     for qa_pair in questions 
                 ]
     
+    # # Perform retrieval for each question
+    # retrievals = []
+
+    # for qa_pair in questions:
+    #     query = qa_pair.question
+    #     # Perform retrieval using the unified interface
+    #     retrieved_memories = layer.retrieve(query, k=top_k)
+    #     retrieval_result = {
+    #         "retrieved_memories": retrieved_memories,
+    #         "qa_pair": qa_pair,
+    #     }
+    #     retrievals.append(retrieval_result)
+    
+    # return retrievals
+
     # Perform retrieval for each question
+    # 确保可以 len()，也方便日志里打印总数
+    questions = list(questions)
+    total_q = len(questions)
+    print(f"[INFO] {user_id}: {total_q} questions to search.")
+
     retrievals = []
-    for qa_pair in questions:
+    pbar = tqdm(
+        questions,
+        total=total_q,
+        desc=f"🔍 {user_id}",
+        leave=False,       # nohup 下避免太多 100% 进度残留
+    )
+
+    for qa_pair in pbar:
         query = qa_pair.question
-        # Perform retrieval using the unified interface
         retrieved_memories = layer.retrieve(query, k=top_k)
-        retrieval_result = {
-            "retrieved_memories": retrieved_memories,
-            "qa_pair": qa_pair,
-            "user_id": user_id, 
-        }
+
+        # MemZero启用Graph时返回的是一个字典
+        if isinstance(retrieved_memories, dict):
+            retrieval_result = {
+                "retrieved_memories": retrieved_memories["memories"],
+                "graph_relations": retrieved_memories["relations"],
+                "qa_pair": qa_pair,
+                "user_id": user_id, 
+            }
+        else:
+            retrieval_result = {
+                "retrieved_memories": retrieved_memories,
+                "qa_pair": qa_pair,
+                "user_id": user_id, 
+            }
         retrievals.append(retrieval_result)
     
     return retrievals
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -194,6 +232,7 @@ if __name__ == "__main__":
         with open(args.config_path, 'r', encoding="utf-8") as f:
             config = json.load(f)
     
+    llm_model = config["llm_model"]
     # Process index range
     if args.start_idx is None:
         args.start_idx = 0
@@ -228,7 +267,7 @@ if __name__ == "__main__":
 
     for item in retrievals:
         item["qa_pair"] = item["qa_pair"].model_dump()
-    output_path = f"{args.memory_type}_{args.dataset_type}_{args.top_k}_{args.start_idx}_{args.end_idx}.json"
+    output_path = f"{args.memory_type}_{llm_model}_{args.dataset_type}_{args.top_k}_{args.start_idx}_{args.end_idx}.json"
 
     with open(output_path, 'w', encoding="utf-8") as f:
         json.dump(

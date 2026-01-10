@@ -1,0 +1,12 @@
+{
+    "api_keys": 
+        [   
+            "sk-f7kiiYOF3dpY1iUsF897Be7c7d954e3284960a837e6dBcAf",
+            "sk-C2DPEt7dmCPuTxgRC415F444Ba204345B020AcE7D4B72b95"
+        ],
+    "base_urls": 
+        [
+            "https://xiaoai.plus/v1",
+            "https://xiaoai.plus/v1"
+        ]
+}

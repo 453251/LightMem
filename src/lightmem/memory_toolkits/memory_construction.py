@@ -160,16 +160,19 @@ def memory_construction(
     message_preprocessor: Optional[
         Callable[[Message | QuestionAnswerPair, Session], Dict[str, Any]]
     ] = None,
+    **kwargs
 ) -> Dict[str, float]: 
     """Given a specific interaction trajectory, this function builds a memory."""
     config = config or {}
+    llm_model = config["llm_model"]
     # It overrides the user_id in the config. 
     config["user_id"] = user_id 
     # Each user has a distinct config directory. 
-    config["save_dir"] = f"{layer_type}/{user_id}" 
+    config["save_dir"] = f"{layer_type}_{llm_model}/{user_id}" 
     # Use lazy mapping to load config and layer classes.
     config_cls = CONFIG_MAPPING[layer_type]
     config = config_cls(**config)
+    dataset_type = kwargs["dataset_type"]
     with _LOCK:
         layer_cls = MEMORY_LAYERS_MAPPING[layer_type]
         layer = layer_cls(config)
@@ -248,7 +251,7 @@ def memory_construction(
         )
         specs = [spec]
         patch_ctx = MonkeyPatcher(specs)
-    elif layer_type == "MemZero":
+    elif layer_type in ("MemZero", "MemZeroGraph"):
         getter, setter = make_attr_patch(layer.memory_layer.llm, "generate_response")
         spec = PatchSpec(
             name = f"{layer.memory_layer.llm.__class__.__name__}.generate_response",
@@ -280,7 +283,59 @@ def memory_construction(
     else:
         raise ValueError(f"Unsupported memory type: {layer_type}.")
 
+    # with patch_ctx:
+    #     # Start to construct the memory for a specific trajectory. 
+    #     for session in trajectory:
+    #         # TODO: take the case that the message is a question-answe pair into the consideration 
+    #         for message in session:
+    #             start_time = datetime.now() 
+    #             msg_dict = {"role": message.role, "content": message.content}
+    #             if message_preprocessor is not None:
+    #                 msg_dict = message_preprocessor(message, session)
+    #             layer.add_message(
+    #                 msg_dict, 
+    #                 timestamp=session.get_string_timestamp()
+    #             )
+    #             end_time = datetime.now() 
+    #             output["total_add_time"] += (end_time - start_time).total_seconds()
+    #             time.sleep(0.2)
+
     with patch_ctx:
+        # 先统计这条 trajectory 里一共要 add 多少条 message
+        total_msgs = sum(len(session) for session in trajectory)
+
+        # 为这一条 trajectory 创建一个进度条
+        pbar_desc = f"🧠 {layer_type} | {user_id}"
+        pbar = tqdm(
+            total=total_msgs,
+            desc=pbar_desc,
+            leave=False,   # 多线程时避免刷屏，可以按需改成 True
+        )
+
+        # try:
+        #     # Start to construct the memory for a specific trajectory. 
+        #     for session in trajectory:
+        #         # TODO: take the case that the message is a question-answe pair into the consideration 
+        #         for message in session:
+        #             start_time = datetime.now() 
+        #             msg_dict = {"role": message.role, "content": message.content}
+        #             if message_preprocessor is not None:
+        #                 msg_dict = message_preprocessor(message, session)
+
+        #             layer.add_message(
+        #                 msg_dict, 
+        #                 timestamp=session.get_string_timestamp()
+        #             )
+
+        #             end_time = datetime.now() 
+        #             output["total_add_time"] += (end_time - start_time).total_seconds()
+
+        #             # 每 add 完一条 message，进度条 +1
+        #             pbar.update(1)
+
+        #             time.sleep(0.2)
+        # finally:
+        #     pbar.close()
         # Start to construct the memory for a specific trajectory. 
         for session in trajectory:
             # TODO: take the case that the message is a question-answe pair into the consideration 
@@ -289,13 +344,25 @@ def memory_construction(
                 msg_dict = {"role": message.role, "content": message.content}
                 if message_preprocessor is not None:
                     msg_dict = message_preprocessor(message, session)
+
+                if dataset_type == "MobileBench":
+                    timestamp = message.timestamp
+                else:
+                    timestamp = session.get_string_timestamp()
                 layer.add_message(
                     msg_dict, 
-                    timestamp=session.get_string_timestamp()
+                    timestamp=timestamp
                 )
+
                 end_time = datetime.now() 
                 output["total_add_time"] += (end_time - start_time).total_seconds()
+
+                # 每 add 完一条 message，进度条 +1
+                pbar.update(1)
+
                 time.sleep(0.2)
+        pbar.close()
+
     
     if layer_type == "A-MEM":
         # It includes I/O operations (loading a sentence embedding model).
@@ -513,6 +580,7 @@ if __name__ == "__main__":
                 config=deepcopy(config), 
                 rerun=args.rerun,
                 message_preprocessor=message_preprocessor,
+                dataset_type=args.dataset_type
             )
             futures.append(future)
         for future in tqdm(

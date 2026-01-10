@@ -13,6 +13,7 @@ MEMORY_LAYERS_MAPPING_NAMES = OrderedDict[str, str](
         ("A-MEM", "AMEMLayer"),
         ("LangMem", "LangMemLayer"),
         ("MemZero", "MemZeroLayer"),
+        ("MemZeroGraph", "MemZeroLayer"),
         ("FullContext", "FullContextLayer"),
         ("NaiveRAG", "NaiveRAGLayer"),
     ]
@@ -24,6 +25,7 @@ CONFIG_MAPPING_NAMES = OrderedDict[str, str](
         ("A-MEM", "AMEMConfig"),
         ("LangMem", "LangMemConfig"),
         ("MemZero", "MemZeroConfig"),
+        ("MemZeroGraph", "MemZeroConfig"),
         ("FullContext", "FullContextConfig"),
         ("NaiveRAG", "NaiveRAGConfig"),
     ]
@@ -62,6 +64,8 @@ def type_to_module_name(key: str, mapping_type: str) -> str:
                 case "LangMem":
                     return "layers.langmem"
                 case "MemZero":
+                    return "layers.memzero"
+                case "MemZeroGraph":
                     return "layers.memzero"
                 case "NaiveRAG":
                     return "layers.naive_rag"

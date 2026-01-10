@@ -24,8 +24,35 @@ from typing import (
     Tuple,
 )
 
+from collections.abc import Mapping
+from types import MappingProxyType
+from pydantic import BaseModel
+
 _LOCK = threading.Lock()
 
+def to_jsonable(obj):
+    """
+    把任意 Python 对象转成可以被 json.dump 接受的类型。
+    - 标量/None 原样返回
+    - list/tuple/set 递归处理
+    - dict / Mapping / mappingproxy 递归处理
+    - pydantic BaseModel：用 model_dump 再递归处理
+    - 其它复杂类型统一转成 str(obj)
+    """
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    
+    if isinstance(obj, BaseModel):
+        return to_jsonable(obj.model_dump())
+    
+    if isinstance(obj, (list, tuple, set)):
+        return [to_jsonable(i) for i in obj]
+    
+    if isinstance(obj, (dict, Mapping, MappingProxyType)):
+        return {str(k): to_jsonable(v) for k, v in obj.items()}
+    
+    # 剩下的统统转字符串，保证 json.dump 不再报错
+    return str(obj)
 
 def _build_memory_units_text(retrieved_memories: List[Dict[str, Any]]) -> str:
     """Build text representation of retrieved memory units."""
@@ -56,6 +83,8 @@ def run_error_attribution_for_user(
     memory_config: Optional[Dict[str, Any]] = None,
     top_k: int = 10,
     batch_size: int = 4,
+    pbar: Optional[tqdm] = None,
+    pbar_lock: Optional[threading.Lock] = None,
 ) -> List[Dict[str, Any]]:
     """
     Run the error attribution algorithm for a single user's failed instances.
@@ -86,8 +115,9 @@ def run_error_attribution_for_user(
     """
     # Load memory layer once for this user
     config = memory_config.copy() if memory_config else {}
+    llm_model = config["llm_model"]
     config["user_id"] = user_id
-    config["save_dir"] = f"{memory_type}/{user_id}"
+    config["save_dir"] = f"{memory_type}_{llm_model}/{user_id}"
     
     config_cls = CONFIG_MAPPING[memory_type]
     config = config_cls(**config)
@@ -104,60 +134,119 @@ def run_error_attribution_for_user(
     attribution_results = []
     
     for item in failed_instances:
-        qa_pair_data = item["qa_pair"]
-        if isinstance(qa_pair_data, dict):
-            qa_pair = QuestionAnswerPair(**qa_pair_data)
-        else:
-            qa_pair = qa_pair_data
-        
-        question = qa_pair.question
-        golden_answers = list(qa_pair.answer_list)
-        prediction = item["prediction"]
-        retrieved_memories = item["retrieved_memories"]
-        
-        # Extract source evidences from metadata
-        source_evidences = qa_pair.metadata.get("source_evidences", [])
-        if not source_evidences:
-            raise ValueError(f"No source evidences found for question answer pair {qa_pair.id}")
-        
-        # Step 1: Check memory construction errors
-        construction_errors = []
-        evidence_memory_searches: List[Tuple[str, List[Dict[str, Union[str, Dict[str, Any]]]]]] = []
-        
-        # Search memory for each evidence using the pre-loaded memory layer
-        for evidence in source_evidences:
-            retrieved_for_evidence = layer.retrieve(evidence, k=top_k)
-            evidence_memory_searches.append((evidence, retrieved_for_evidence))
-        
-        # Prepare batch inputs for construction error checking
-        question_list = []
-        golden_answers_list = []
-        source_evidence_list = []
-        retrieved_memory_units_list = []
-        evidence_indices = []
-        
-        for idx, (evidence, retrieved_for_evidence) in enumerate(evidence_memory_searches):
-            question_list.append(question)
-            golden_answers_list.append(golden_answers)
-            source_evidence_list.append(evidence)
-            retrieved_memory_units_list.append(
-                _build_memory_units_text(retrieved_for_evidence)
-            )
-            evidence_indices.append(idx)
-        
-        if question_list:
-            construction_results = construction_checker(
-                question_list,
-                golden_answers_list,
-                source_evidence_list,
-                retrieved_memory_units_list,
-                batch_size=batch_size,
+        try:
+            qa_pair_data = item["qa_pair"]
+            if isinstance(qa_pair_data, dict):
+                qa_pair = QuestionAnswerPair(**qa_pair_data)
+            else:
+                qa_pair = qa_pair_data
+            
+            question = qa_pair.question
+            golden_answers = list(qa_pair.answer_list)
+            prediction = item["prediction"]
+            retrieved_memories = item["retrieved_memories"]
+            
+            # Extract source evidences from metadata
+            source_evidences = qa_pair.metadata.get("source_evidences", [])
+            if not source_evidences:
+                raise ValueError(f"No source evidences found for question answer pair {qa_pair.id}")
+            
+            # Step 1: Check memory construction errors
+            construction_errors = []
+            evidence_memory_searches: List[Tuple[str, List[Dict[str, Union[str, Dict[str, Any]]]]]] = []
+            
+            # Search memory for each evidence using the pre-loaded memory layer
+            for evidence in source_evidences:
+                evidence = evidence["content"]
+                retrieved_for_evidence = layer.retrieve(evidence, k=top_k)
+                evidence_memory_searches.append((evidence, retrieved_for_evidence))
+            
+            # Prepare batch inputs for construction error checking
+            question_list = []
+            golden_answers_list = []
+            source_evidence_list = []
+            retrieved_memory_units_list = []
+            evidence_indices = []
+            
+            for idx, (evidence, retrieved_for_evidence) in enumerate(evidence_memory_searches):
+                question_list.append(question)
+                golden_answers_list.append(golden_answers)
+                source_evidence_list.append(evidence)
+                retrieved_memory_units_list.append(
+                    _build_memory_units_text(retrieved_for_evidence)
+                )
+                evidence_indices.append(idx)
+            
+            if question_list:
+                construction_results = construction_checker(
+                    question_list,
+                    golden_answers_list,
+                    source_evidence_list,
+                    retrieved_memory_units_list,
+                    batch_size=batch_size,
+                    aggregate=True,
+                    temperature=1.0,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "memory_construction_error_check",
+                            "strict": True,
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "explanation": {
+                                        "type": "string",
+                                        "description": "Brief explanation of the reasoning."
+                                    },
+                                    "is_present": {
+                                        "type": "boolean",
+                                        "description": "Whether the essential information is present in memory units."
+                                    }
+                                },
+                                "required": ["explanation", "is_present"],
+                                "additionalProperties": False
+                            }
+                        },
+                    },
+                )
+                
+                for idx, result in zip(evidence_indices, construction_results):
+                    evidence, _ = evidence_memory_searches[idx]
+                    if not result["is_present"]:
+                        construction_errors.append(
+                            {
+                                "evidence": evidence,
+                                "explanation": result["explanation"],
+                            }
+                        )
+            
+            if construction_errors:
+                # Memory construction error detected
+                attribution_results.append(
+                    {
+                        "qa_pair": qa_pair.model_dump(),
+                        "prediction": prediction,
+                        "error_type": "memory_construction_error",
+                        "error_details": construction_errors,
+                        "retrieved_memories": retrieved_memories,
+                        "user_id": user_id,
+                    }
+                )
+                continue
+            
+            # Step 2: Check retrieval errors
+            retrieval_result = retrieval_checker(
+                [question],
+                [golden_answers],
+                [_build_evidences_text(source_evidences)],
+                [_build_memory_units_text(retrieved_memories)],
+                batch_size=1,
                 aggregate=True,
                 temperature=1.0,
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
-                        "name": "memory_construction_error_check",
+                        "name": "retrieval_error_check",
                         "strict": True,
                         "schema": {
                             "type": "object",
@@ -166,111 +255,61 @@ def run_error_attribution_for_user(
                                     "type": "string",
                                     "description": "Brief explanation of the reasoning."
                                 },
-                                "is_present": {
+                                "is_sufficient": {
                                     "type": "boolean",
-                                    "description": "Whether the essential information is present in memory units."
+                                    "description": "Whether the retrieval results sufficiently cover the source evidences."
                                 }
                             },
-                            "required": ["explanation", "is_present"],
+                            "required": ["explanation", "is_sufficient"],
                             "additionalProperties": False
                         }
                     },
                 },
             )
             
-            for idx, result in zip(evidence_indices, construction_results):
-                evidence, _ = evidence_memory_searches[idx]
-                if not result["is_present"]:
-                    construction_errors.append(
-                        {
-                            "evidence": evidence,
-                            "explanation": result["explanation"],
-                        }
-                    )
-        
-        if construction_errors:
-            # Memory construction error detected
+            retrieval_check = retrieval_result[0]
+            
+            if not retrieval_check["is_sufficient"]:
+                # Retrieval error detected
+                attribution_results.append(
+                    {
+                        "qa_pair": qa_pair.model_dump(),
+                        "prediction": prediction,
+                        "error_type": "retrieval_error",
+                        "error_details": {
+                            "explanation": retrieval_check["explanation"],
+                        },
+                        "retrieved_memories": retrieved_memories,
+                        "user_id": user_id,
+                    }
+                )
+                continue
+            
+            # Step 3: Response error (retrieval is correct but answer is wrong)
             attribution_results.append(
                 {
                     "qa_pair": qa_pair.model_dump(),
                     "prediction": prediction,
-                    "error_type": "memory_construction_error",
-                    "error_details": construction_errors,
-                    "retrieved_memories": retrieved_memories,
-                    "user_id": user_id,
-                }
-            )
-            continue
-        
-        # Step 2: Check retrieval errors
-        retrieval_result = retrieval_checker(
-            [question],
-            [golden_answers],
-            [_build_evidences_text(source_evidences)],
-            [_build_memory_units_text(retrieved_memories)],
-            batch_size=1,
-            aggregate=True,
-            temperature=1.0,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "retrieval_error_check",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "explanation": {
-                                "type": "string",
-                                "description": "Brief explanation of the reasoning."
-                            },
-                            "is_sufficient": {
-                                "type": "boolean",
-                                "description": "Whether the retrieval results sufficiently cover the source evidences."
-                            }
-                        },
-                        "required": ["explanation", "is_sufficient"],
-                        "additionalProperties": False
-                    }
-                },
-            },
-        )
-        
-        retrieval_check = retrieval_result[0]
-        
-        if not retrieval_check["is_sufficient"]:
-            # Retrieval error detected
-            attribution_results.append
-            (
-                {
-                    "qa_pair": qa_pair.model_dump(),
-                    "prediction": prediction,
-                    "error_type": "retrieval_error",
+                    "error_type": "response_error",
                     "error_details": {
-                        "explanation": retrieval_check["explanation"],
+                        "explanation": (
+                            "Retrieval results contain all necessary information, " 
+                            "but the generated answer is still incorrect."
+                        ),
                     },
                     "retrieved_memories": retrieved_memories,
                     "user_id": user_id,
                 }
             )
-            continue
+            
+        finally:
+            if pbar is not None:
+                if pbar_lock is None:
+                    pbar.update(1)
+                else:
+                    with pbar_lock:
+                        pbar.update(1)
         
-        # Step 3: Response error (retrieval is correct but answer is wrong)
-        attribution_results.append(
-            {
-                "qa_pair": qa_pair.model_dump(),
-                "prediction": prediction,
-                "error_type": "response_error",
-                "error_details": {
-                    "explanation": (
-                        "Retrieval results contain all necessary information, " 
-                        "but the generated answer is still incorrect."
-                    ),
-                },
-                "retrieved_memories": retrieved_memories,
-                "user_id": user_id,
-            }
-        )
-    
     return attribution_results
 
 
@@ -346,31 +385,40 @@ def run_error_attribution(
         **interface_kwargs,
     )
     
+    total_failed = len(failed_instances)
+    pbar_lock = threading.Lock()
+    pbar = tqdm(total=total_failed, desc="🧪 Attributing failed instances", unit="inst")
+
     # Process users in parallel
     attribution_results = []
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        futures = []
-        for user_id, user_instances in user_to_instances.items():
-            future = executor.submit(
-                run_error_attribution_for_user,
-                user_id,
-                user_instances,
-                memory_type,
-                construction_checker,
-                retrieval_checker,
-                memory_config=deepcopy(memory_config),
-                top_k=top_k,
-                batch_size=batch_size,
-            )
-            futures.append(future)
-        
-        for future in tqdm(
-            as_completed(futures), 
-            total=len(futures), 
-            desc="🔍 Processing users"
-        ):
-            results = future.result()
-            attribution_results.extend(results)
+    try:
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = []
+            for user_id, user_instances in user_to_instances.items():
+                future = executor.submit(
+                    run_error_attribution_for_user,
+                    user_id,
+                    user_instances,
+                    memory_type,
+                    construction_checker,
+                    retrieval_checker,
+                    memory_config=deepcopy(memory_config),
+                    top_k=top_k,
+                    batch_size=batch_size,
+                    pbar=pbar,
+                    pbar_lock=pbar_lock,
+                )
+                futures.append(future)
+            
+            for future in tqdm(
+                as_completed(futures), 
+                total=len(futures), 
+                desc="🔍 Processing users"
+            ):
+                results = future.result()
+                attribution_results.extend(results)
+    finally:
+        pbar.close()
     
     return attribution_results
 
@@ -521,7 +569,7 @@ if __name__ == "__main__":
     }
     with open(output_path, 'w', encoding="utf-8") as f:
         json.dump(
-            final_output,
+            to_jsonable(final_output),
             f,
             ensure_ascii=False,
             indent=4,

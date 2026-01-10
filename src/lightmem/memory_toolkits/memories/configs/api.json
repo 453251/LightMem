@@ -1,4 +1,24 @@
 {
-    "api_keys": "sk-UUub30UysBzu3AlyidYJGH978W54oWGKob44lI7KJBvjQ7BY",
-    "base_urls": "https://www.DMXapi.com/v1"
+    "api_keys": 
+        [   
+            "sk-iFmAPxMmlaKOST3QDc7f5bB25d3b439a8d06C0FfB424FaA4",
+            "sk-AD783mmMNQSYCF298aB34101752841AeB9742f0bB732584c",
+            "sk-e8AoB4tqbiI8rmH2E3F3E9154690432bA7F9D7A9Fe065b14",
+            "sk-vOHD3qt4XxZz5hCw734eAa5fF1Ee4f6a8cC0E6C628800693",
+            "sk-lb50jZIPMTZwnsDx44577a46010046Da8d2aE601Af2f4cF3",
+            "sk-9HkFTk3YGvjls1YP96471c354bAc495087C4D990562aAc66",
+            "sk-MO4f21O8Xv7Clgbo326a834aF02b47CcB17fA5Ae64BaD46e",
+            "sk-HC7OS4OnhSlxgqtjB3Be027d5f7c46989bE84d6a03C13155"
+        ],
+    "base_urls": 
+        [
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1"
+        ]
 }

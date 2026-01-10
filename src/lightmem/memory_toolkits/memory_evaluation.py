@@ -56,6 +56,17 @@ def _build_context_text(retrieved_memories: List[Dict[str, Any]]) -> str:
         contents.append(f"### Memory {i + 1}:\n{content}")
     return "\n\n".join(contents)
 
+def _build_graph_text(relations: Any) -> str:
+    if not relations:
+        return ""
+    # 根据 mem0 返回格式，自行展开
+    # 下面只是一个非常粗糙的示意：
+    lines = ["### Graph Relations:"]
+    for rel in relations:
+        # rel 里是什么结构得 print 一下看，这里只是占位
+        lines.append(str(rel))
+    return "\n".join(lines)
+
 def answer_questions(
     retrievals: List[Dict[str, Any]],
     qa_model: str,
@@ -74,7 +85,12 @@ def answer_questions(
             )
         else:
             questions.append(qa_pair.question)
-        contexts.append(_build_context_text(item["retrieved_memories"]))
+        base_ctx = _build_context_text(item["retrieved_memories"])
+        rel_ctx = _build_graph_text(item.get("graph_relations"))
+        if rel_ctx:
+            contexts.append(base_ctx + "\n\n" + rel_ctx)
+        else:
+            contexts.append(base_ctx)
 
     qa_operator = QuestionAnsweringOperator(
         prompt_name="question-answering",

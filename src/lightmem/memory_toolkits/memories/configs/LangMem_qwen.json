@@ -1,0 +1,4 @@
+{
+    "user_id": "dummy",
+    "llm_model":"openai:qwen3-235b-a22b-instruct-2507"
+}

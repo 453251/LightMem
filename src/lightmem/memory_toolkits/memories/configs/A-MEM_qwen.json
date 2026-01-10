@@ -1,0 +1,7 @@
+{
+  "user_id": "dummy",
+  "llm_backend": "openai",
+  "llm_model": "qwen3-235b-a22b-instruct-2507",
+  "retriever_name_or_path": "sentence-transformers/all-MiniLM-L6-v2",
+  "api_key": "sk-RbEjV9qrdLGmwgnJdf6lPvqxJso9f95r6BGaGP2eANuVCnci"
+}

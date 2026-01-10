@@ -1,0 +1,24 @@
+{
+    "api_keys": 
+        [   
+            "sk-ptcYxCjMSpHRFpdYD29eA790C191481d972d955498CeC2A0",
+            "sk-7gKTYPyTlmVjOl7m488090C63b944a899915363c3a2858Ef",
+            "sk-cygPVE1B8Ep6qZQxEc89629815714dF1B683F5BcAbF20fAd",
+            "sk-ulYgVbHlqS73tqh5F516C9EfCbFe47488dF78eE4B976E8Ab",
+            "sk-ucEa4NMeNir02ewm26C13f2094494c38Aa6f5bEb15Fb1cC0",
+            "sk-cCiVZRx6R2jeluiGD599Cb130914450e9fE61887FfBdC2Df",
+            "sk-FIuufPtL4sOR5Gei81E8020aCcC1465a9798D6Cd6135B723",
+            "sk-rbgtjAMvz5PcHsxfB7B83e112c8e4aBf8b4aB39a8313751c"
+        ],
+    "base_urls": 
+        [
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1",
+            "https://api.gpts.vin/v1"
+        ]
+}
